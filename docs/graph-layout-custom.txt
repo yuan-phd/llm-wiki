@@ -1,0 +1,177 @@
+function renderGraph(data) {
+  const svg = d3.select('#graphSvg');
+  svg.selectAll('*').remove();
+
+  const width = document.getElementById('panel-graph').clientWidth;
+  const height = document.getElementById('panel-graph').clientHeight;
+
+  svg.attr('viewBox', [0, 0, width, height]);
+
+  const g = svg.append('g');
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+    g.attr('transform', event.transform);
+  }));
+
+  // Calculate node sizes based on connection count
+  const linkCount = {};
+  data.edges.forEach(e => {
+    linkCount[e.source] = (linkCount[e.source] || 0) + 1;
+    linkCount[e.target] = (linkCount[e.target] || 0) + 1;
+  });
+
+  const groupRadius = {
+    meetings: 0.15,
+    ccc: 0.3,
+    projects: 0.35,
+    systems: 0.4,
+    process: 0.5,
+    slack: 0.55,
+    queries: 0.6,
+    other: 0.65,
+    people: 0.85
+  };
+
+  // Initial positions by group
+  const topArea = 100;
+  const centerY = height / 2;
+  const bottomArea = height - 120;
+
+  data.nodes.forEach((n, i) => {
+    if (n.group === 'people') {
+      const peopleNodes = data.nodes.filter(d => d.group === 'people');
+      const idx = peopleNodes.indexOf(n);
+      const spacing = (width - 200) / (peopleNodes.length + 1);
+      n.x = 100 + spacing * (idx + 1) + (Math.random() - 0.5) * 40;
+      n.y = topArea + (Math.random() - 0.5) * 50;
+    } else if (n.group === 'meetings') {
+      n.x = width / 2 + (Math.random() - 0.5) * width * 0.3;
+      n.y = centerY + (Math.random() - 0.5) * 80;
+    } else if (n.group === 'process') {
+      n.x = width / 2 + (Math.random() - 0.5) * width * 0.4;
+      n.y = bottomArea + (Math.random() - 0.5) * 60;
+    } else {
+      n.x = width / 2 + (Math.random() - 0.5) * width * 0.4;
+      n.y = centerY + (Math.random() - 0.5) * height * 0.3;
+    }
+  });
+
+  const simulation = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('centerX', d3.forceX(width / 2).strength(0.03))
+    .force('collision', d3.forceCollide().radius(30))
+    .force('groupY', d3.forceY(d => {
+      if (d.group === 'people') return topArea;
+      if (d.group === 'meetings') return centerY;
+      if (d.group === 'process') return bottomArea;
+      return centerY + 50;
+    }).strength(d => {
+      if (d.group === 'people') return 0.4;
+      if (d.group === 'meetings') return 0.3;
+      if (d.group === 'process') return 0.3;
+      return 0.05;
+    }));
+
+  graphSimulation = simulation;
+
+  // Draw edges
+  const link = g.append('g')
+    .selectAll('line')
+    .data(data.edges)
+    .join('line')
+    .attr('stroke', '#2a2d3a')
+    .attr('stroke-width', 1)
+    .attr('stroke-opacity', 0.6);
+
+  // Draw nodes
+  const node = g.append('g')
+    .selectAll('circle')
+    .data(data.nodes)
+    .join('circle')
+    .attr('r', d => Math.max(5, Math.min(14, (linkCount[d.id] || 0) * 1.2 + 4)))
+    .attr('fill', d => GROUP_COLORS[d.group] || GROUP_COLORS.other)
+    .attr('stroke', '#0f1117')
+    .attr('stroke-width', 1.5)
+    .style('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Draw labels
+  const label = g.append('g')
+    .selectAll('text')
+    .data(data.nodes)
+    .join('text')
+    .text(d => d.title)
+    .attr('font-size', 11)
+    .attr('fill', '#e1e3eb')
+    .attr('dx', d => Math.max(6, Math.min(20, (linkCount[d.id] || 0) * 2 + 4)) + 4)
+    .attr('dy', 4)
+    .style('pointer-events', 'none');
+
+  // Hover: highlight connected nodes
+  node.on('mouseover', function(event, d) {
+    const connected = new Set();
+    connected.add(d.id);
+    data.edges.forEach(e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      if (sid === d.id) connected.add(tid);
+      if (tid === d.id) connected.add(sid);
+    });
+    node.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+    link.attr('stroke-opacity', e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      return (sid === d.id || tid === d.id) ? 0.8 : 0.05;
+    });
+    label.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+  });
+
+  node.on('mouseout', function() {
+    node.attr('opacity', 1);
+    link.attr('stroke-opacity', 0.6);
+    label.attr('opacity', 1);
+  });
+
+  // Click: open wiki page
+  node.on('click', function(event, d) { showPanel('wiki'); setTimeout(() => openTreePage(d.id + '.md'), 200); });
+
+  const legendGroups = [...new Set(data.nodes.map(n => n.group))].sort();
+  const legend = svg.append('g')
+    .attr('transform', 'translate(20,' + (height - legendGroups.length * 22 - 30) + ')')
+    .attr('style', 'pointer-events: none;');
+
+  legend.append('rect')
+    .attr('x', -10).attr('y', -10)
+    .attr('width', 160)
+    .attr('height', legendGroups.length * 22 + 12)
+    .attr('fill', 'var(--bg-card)')
+    .attr('stroke', 'var(--border)')
+    .attr('rx', 6)
+    .attr('opacity', 0.9);
+
+  legendGroups.forEach((group, i) => {
+    legend.append('circle')
+      .attr('cx', 8).attr('cy', i * 22 + 8)
+      .attr('r', 5)
+      .attr('fill', GROUP_COLORS[group] || GROUP_COLORS.other);
+    legend.append('text')
+      .attr('x', 20).attr('y', i * 22 + 12)
+      .text(group.charAt(0).toUpperCase() + group.slice(1))
+      .attr('font-size', 12)
+      .attr('fill', '#e1e3eb');
+  });
+
+  // Tick
+  simulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('cx', d => d.x).attr('cy', d => d.y);
+    label.attr('x', d => d.x).attr('y', d => d.y);
+  });
+}

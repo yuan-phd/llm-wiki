@@ -1,0 +1,1109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Team Wiki</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --bg-card: #181a23; --bg-hover: #1e2130; --bg-input: #12141c;
+    --border: #2a2d3a; --border-focus: #4a7cff;
+    --text: #e1e3eb; --text-dim: #7a7f93; --text-faint: #4e5264;
+    --accent: #4a7cff; --accent-glow: rgba(74, 124, 255, 0.15);
+    --green: #34d399; --green-dim: rgba(52, 211, 153, 0.12);
+    --amber: #fbbf24; --amber-dim: rgba(251, 191, 36, 0.12);
+    --red: #f87171; --red-dim: rgba(248, 113, 113, 0.12);
+    --radius: 10px; --radius-sm: 6px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; -webkit-font-smoothing: antialiased; }
+
+  .shell { display: grid; grid-template-columns: 170px 1fr; min-height: 100vh; }
+
+  /* Sidebar nav */
+  .sidebar { background: var(--bg-card); border-right: 1px solid var(--border); padding: 28px 0; display: flex; flex-direction: column; }
+  .logo { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 600; letter-spacing: 0.5px; padding: 0 24px 28px; color: var(--text); display: flex; align-items: center; gap: 10px; }
+  .logo .dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; box-shadow: 0 0 8px var(--accent); }
+  .nav { flex: 1; }
+  .nav-item { display: flex; align-items: center; gap: 12px; padding: 11px 24px; font-size: 14px; color: var(--text-dim); cursor: pointer; transition: all 0.15s; border-left: 2px solid transparent; }
+  .nav-item:hover { color: var(--text); background: var(--bg-hover); }
+  .nav-item.active { color: var(--accent); background: var(--accent-glow); border-left-color: var(--accent); font-weight: 500; }
+  .nav-item svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .stats-bar { padding: 20px 24px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .stat { display: flex; justify-content: space-between; font-size: 12px; }
+  .stat-label { color: var(--text-faint); } .stat-value { color: var(--text-dim); font-family: 'IBM Plex Mono', monospace; }
+
+  .main { padding: 0; overflow-y: auto; max-height: 100vh; }
+  .main-padded { padding: 36px 48px; }
+  .page-title { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .page-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 32px; }
+  .panel { display: none; } .panel.active { display: block; }
+
+  /* Homepage */
+  .home-container { padding: 36px 48px; max-width: 860px; }
+  .home-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 28px; }
+  .home-header h1 { font-size: 22px; font-weight: 600; }
+  .home-updated { font-size: 12px; color: var(--text-faint); font-family: 'IBM Plex Mono', monospace; }
+  .status-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 32px; margin-bottom: 20px; line-height: 1.7; font-size: 14px; }
+  .status-card h2 { font-size: 17px; font-weight: 600; margin-bottom: 16px; color: var(--text); }
+  .status-card h3 { font-size: 14px; font-weight: 600; margin: 18px 0 8px; color: var(--text-dim); }
+  .todo-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--accent); cursor: pointer; padding: 6px 0; margin-top: 8px; }
+  .todo-toggle:hover { text-decoration: underline; }
+  .todo-content { display: none; } .todo-content.open { display: block; }
+  .no-status { color: var(--text-faint); text-align: center; padding: 60px 20px; }
+
+  /* Wiki tree + reader */
+  .wiki-layout { display: grid; grid-template-columns: 260px 1fr; height: 100vh; }
+  .wiki-tree { background: var(--bg-card); border-right: 1px solid var(--border); padding: 20px 0; overflow-y: auto; }
+  .wiki-reader { padding: 36px 48px; overflow-y: auto; max-width: 800px; }
+  .tree-section { margin-bottom: 4px; }
+  .tree-project { display: flex; align-items: center; gap: 8px; padding: 10px 20px; font-size: 14px; font-weight: 500; color: var(--text); cursor: pointer; transition: background 0.1s; }
+  .tree-project:hover { background: var(--bg-hover); }
+  .tree-project .arrow { font-size: 10px; color: var(--text-faint); transition: transform 0.15s; width: 12px; }
+  .tree-project .arrow.open { transform: rotate(90deg); }
+  .tree-category { padding: 6px 20px 6px 40px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-faint); }
+  .tree-page { display: block; padding: 5px 20px 5px 48px; font-size: 13px; color: var(--text); cursor: pointer; transition: all 0.1s; text-decoration: none; }
+  .tree-page:hover { color: var(--accent); background: var(--bg-hover); }
+  .tree-page.active { color: var(--accent); background: var(--accent-glow); }
+  .tree-children { display: none; } .tree-children.open { display: block; }
+  .tree-proj-link { display: block; padding: 5px 20px 5px 48px; font-size: 13px; color: var(--accent); cursor: pointer; font-style: italic; margin-bottom: 2px; }
+  .tree-proj-link:hover { text-decoration: underline; }
+  .tree-empty { padding: 5px 20px 5px 48px; font-size: 12px; color: var(--text-faint); font-style: italic; }
+
+  .reader-content { line-height: 1.75; font-size: 14px; }
+  .reader-content h1 { font-size: 20px; margin: 0 0 16px; }
+  .reader-content h2 { font-size: 16px; margin: 24px 0 8px; color: var(--text); }
+  .reader-content h3 { font-size: 14px; margin: 18px 0 6px; color: var(--text-dim); }
+  .reader-content ul, .reader-content ol { margin: 8px 0; padding-left: 20px; }
+  .reader-content li { margin: 4px 0; }
+  .reader-content strong { color: var(--text); }
+  .reader-content p { margin: 10px 0; }
+  .wiki-link { color: var(--accent); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+  .wiki-link:hover { text-decoration-style: solid; }
+  .reader-placeholder { color: var(--text-faint); text-align: center; padding: 80px 20px; font-size: 14px; }
+
+  /* Upload */
+  .upload-zone { border: 2px dashed var(--border); border-radius: var(--radius); padding: 52px 32px; text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 20px; }
+  .upload-zone:hover, .upload-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+  .upload-zone svg { width: 40px; height: 40px; stroke: var(--text-faint); fill: none; stroke-width: 1.5; margin-bottom: 14px; }
+  .upload-zone p { font-size: 14px; color: var(--text-dim); margin-bottom: 4px; }
+  .upload-zone .hint { font-size: 12px; color: var(--text-faint); }
+  .category-row { display: flex; gap: 8px; margin-bottom: 24px; }
+  .cat-btn { padding: 7px 16px; font-size: 13px; font-family: 'IBM Plex Mono', monospace; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-dim); cursor: pointer; transition: all 0.15s; }
+  .cat-btn:hover { border-color: var(--text-dim); color: var(--text); }
+  .cat-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .file-list { display: flex; flex-direction: column; gap: 4px; }
+  .file-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--bg-card); border-radius: var(--radius-sm); font-size: 13px; font-family: 'IBM Plex Mono', monospace; }
+  .file-item .path { color: var(--text); } .file-item .meta { color: var(--text-faint); font-size: 12px; }
+  .upload-list { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+  .upload-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--bg-card); border-radius: var(--radius-sm); font-size: 13px; font-family: 'IBM Plex Mono', monospace; color: var(--green); }
+
+  /* Ask */
+  .ask-box { display: flex; gap: 10px; margin-bottom: 28px; }
+  .ask-input { flex: 1; padding: 12px 18px; font-size: 14px; font-family: 'IBM Plex Sans', sans-serif; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); outline: none; }
+  .ask-input::placeholder { color: var(--text-faint); }
+  .ask-input:focus { border-color: var(--border-focus); }
+  .answer-box { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 28px; line-height: 1.75; font-size: 14px; max-width: 740px; }
+  .answer-box:empty { display: none; } .answer-box.loading { display: block; color: var(--text-faint); font-style: italic; }
+
+  /* Buttons */
+  .btn { padding: 10px 22px; font-size: 13px; font-weight: 500; font-family: 'IBM Plex Sans', sans-serif; border: none; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.15s; }
+  .btn-primary { background: var(--accent); color: #fff; } .btn-primary:hover { filter: brightness(1.1); } .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-dim); } .btn-outline:hover { border-color: var(--text-dim); color: var(--text); }
+  .btn-sm { padding: 5px 12px; font-size: 12px; }
+  .btn-danger { background: var(--red-dim); color: var(--red); border: 1px solid transparent; } .btn-danger:hover { border-color: var(--red); }
+  .btn-merge { background: var(--amber-dim); color: var(--amber); border: 1px solid transparent; } .btn-merge:hover { border-color: var(--amber); }
+
+  /* People */
+  .people-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+  .person-row { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); transition: all 0.15s; }
+  .person-row:hover { border-color: var(--accent); }
+  .person-row.selected { border-color: var(--amber); background: var(--amber-dim); }
+  .person-info { flex: 1; cursor: pointer; }
+  .person-name { font-size: 14px; font-weight: 500; margin-bottom: 2px; }
+  .person-role { font-size: 12px; color: var(--text-dim); }
+  .person-actions { display: flex; gap: 6px; }
+  .merge-bar { background: var(--bg-card); border: 1px solid var(--amber); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
+  .merge-bar .merge-text { font-size: 13px; color: var(--amber); }
+
+  /* Maintain */
+  .action-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .action-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px; }
+  .action-card h3 { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+  .action-card p { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-bottom: 16px; }
+  .job-output { margin-top: 20px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; font-size: 13px; font-family: 'IBM Plex Mono', monospace; line-height: 1.6; white-space: pre-wrap; color: var(--text-dim); max-height: 400px; overflow-y: auto; }
+  .job-output:empty { display: none; }
+
+  /* Modal */
+  .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 100; display: flex; align-items: center; justify-content: center; }
+  .modal { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 28px 32px; max-width: 440px; width: 90%; }
+  .modal h3 { font-size: 16px; margin-bottom: 12px; }
+  .modal p { font-size: 13px; color: var(--text-dim); line-height: 1.6; margin-bottom: 20px; }
+  .modal input { width: 100%; padding: 10px 14px; font-size: 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); outline: none; margin-bottom: 16px; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  .toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; z-index: 1000; animation: slideUp 0.3s ease; }
+  .toast.success { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+  .toast.error { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+  @keyframes slideUp { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-faint); font-size: 14px; }
+  .section-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--text-faint); margin-bottom: 14px; }
+  .tree-children.open { display: block !important; }
+  .arr.open { transform: rotate(90deg); }
+  .tree-page:hover { color: var(--accent) !important; background: var(--bg-hover); }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <div class="sidebar">
+    <div class="logo"><span class="dot"></span> team wiki</div>
+    <div class="nav">
+      <div class="nav-item active" onclick="showPanel('wiki')">
+        <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Browse Wiki
+      </div>
+      <div class="nav-item" onclick="showPanel('graph')">
+        <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><line x1="8.5" y1="7.5" x2="10.5" y2="16"/><line x1="15.5" y1="7.5" x2="13.5" y2="16"/><line x1="9" y1="6" x2="15" y2="6"/></svg>
+        Graph
+      </div>
+      <div class="nav-item" onclick="showPanel('ask')">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Ask
+      </div>
+      <div class="nav-item" onclick="showPanel('upload')">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Upload
+      </div>
+      <div class="nav-item" onclick="showPanel('people')">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        People
+      </div>
+      <div class="nav-item" onclick="showPanel('maintain')">
+        <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        Maintain
+      </div>
+    </div>
+    <div class="stats-bar">
+      <div class="stat"><span class="stat-label">Raw files</span><span class="stat-value" id="statRaw">—</span></div>
+      <div class="stat"><span class="stat-label">Wiki pages</span><span class="stat-value" id="statPages">—</span></div>
+      <div class="stat"><span class="stat-label">Words</span><span class="stat-value" id="statWords">—</span></div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- WIKI BROWSE -->
+    <div class="panel active" id="panel-wiki">
+      <!-- Summary at top -->
+      <div id="wikiSummary" style="padding: 20px 24px; border-bottom: 1px solid var(--border);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <div id="summaryTabs" style="display: flex; gap: 24px; align-items: flex-end;"></div>
+          <span id="summaryToggle" style="font-size: 12px; color: var(--text-faint); cursor: pointer;" onclick="toggleSummary()">▼</span>
+        </div>
+        <div id="summaryContent" style="font-size: 13px; line-height: 1.6; color: var(--text);"></div>
+      </div>
+      <!-- Two-panel layout -->
+      <div style="display: grid; grid-template-columns: 300px 1fr; height: calc(100vh - 120px);">
+        <div id="wikiNav" style="background: var(--bg-card); border-right: 1px solid var(--border); padding: 16px 0; overflow-y: auto;"></div>
+        <div id="wikiReader" style="padding: 36px 48px; overflow-y: auto;"><div style="color: var(--text-faint); text-align: center; padding: 80px 20px;">Select a page from the navigation.</div></div>
+      </div>
+    </div>
+
+    <!-- GRAPH -->
+    <div class="panel" id="panel-graph">
+      <div style="width:100%; height:100vh; position:relative;">
+        <div id="graphSearch" style="position:absolute; top:16px; left:16px; z-index:10;">
+          <input type="text" id="graphSearchInput" placeholder="Search nodes..." style="padding:8px 14px; font-size:13px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); outline:none; width:220px;" oninput="filterGraph(this.value)">
+        </div>
+        <svg id="graphSvg" style="width:100%; height:100%;"></svg>
+      </div>
+    </div>
+
+    <!-- ASK -->
+    <div class="panel" id="panel-ask">
+      <div class="main-padded">
+        <div class="page-title">Ask the Wiki</div>
+        <div class="page-sub">Ask any question — the AI answers based on your compiled knowledge base.</div>
+        <div class="ask-box">
+          <input class="ask-input" id="askInput" placeholder="e.g. What are the open blockers?" onkeydown="if(event.key==='Enter')askQuestion()">
+          <button class="btn btn-primary" id="askBtn" onclick="askQuestion()">Ask</button>
+        </div>
+        <div class="answer-box" id="answerBox"></div>
+        <div id="saveAnswerBar" style="display:none; margin-top: 12px;">
+          <button class="btn btn-sm btn-outline" onclick="saveAnswer()">Save to wiki</button>
+          <span id="saveStatus" style="font-size: 12px; color: var(--text-faint); margin-left: 10px;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPLOAD -->
+    <div class="panel" id="panel-upload">
+      <div class="main-padded">
+        <div class="page-title">Upload Sources</div>
+        <div class="page-sub">Drop files to add them to the raw knowledge base.</div>
+        <div class="section-label">Category</div>
+        <div class="category-row">
+          <div class="cat-btn active" onclick="setCategory(this,'docs')">docs</div>
+          <div class="cat-btn" onclick="setCategory(this,'slack')">slack</div>
+          <div class="cat-btn" onclick="setCategory(this,'meetings')">meetings</div>
+          <div class="cat-btn" onclick="setCategory(this,'code')">code</div>
+        </div>
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop files here or click to browse</p>
+          <div class="hint">.md .txt .csv .json .docx .pdf .yaml</div>
+        </div>
+        <input type="file" id="fileInput" multiple hidden>
+        <div class="upload-list" id="uploadResults"></div>
+        <div class="section-label" style="margin-top:32px">Files in raw/</div>
+        <div class="file-list" id="rawFileList"><div class="empty-state">No files yet.</div></div>
+      </div>
+    </div>
+
+    <!-- PEOPLE -->
+    <div class="panel" id="panel-people">
+      <div class="main-padded">
+        <div class="page-title">People</div>
+        <div class="page-sub">Manage team members. Merge duplicates, delete irrelevant entries, rename.</div>
+        <div id="mergeBar" style="display:none" class="merge-bar">
+          <span class="merge-text" id="mergeText">Select another person to merge with</span>
+          <div><button class="btn btn-sm btn-outline" onclick="cancelMerge()">Cancel</button></div>
+        </div>
+        <div class="people-list" id="peopleList"><div class="empty-state">No people pages yet.</div></div>
+      </div>
+    </div>
+
+    <!-- MAINTAIN -->
+    <div class="panel" id="panel-maintain">
+      <div class="main-padded">
+        <div class="page-title">Maintain</div>
+        <div class="page-sub">Run wiki operations. Compile/Ingest take 30–90 seconds.</div>
+        <div class="action-cards">
+          <div class="action-card"><h3>Compile</h3><p>Full rebuild from all raw files.</p><button class="btn btn-primary" onclick="runJob('compile')">Run Compile</button></div>
+          <div class="action-card"><h3>Ingest</h3><p>Incremental update from new files.</p><button class="btn btn-primary" onclick="runJob('ingest')">Run Ingest</button></div>
+          <div class="action-card"><h3>Lint</h3><p>Health check for consistency.</p><button class="btn btn-outline" onclick="runJob('lint')">Run Lint</button></div>
+          <div class="action-card"><h3>Refresh Summary</h3><p>Regenerate the project summary and navigation. No compilation, nearly free.</p><button class="btn btn-outline" onclick="fetch('/api/run/refresh_summary',{method:'POST'}).then(r=>r.json()).then(d=>{toast(d.message||d.error,d.status==='ok'?'success':'error');loadSummary();loadNav();})">Refresh</button></div>
+        </div>
+        <div class="job-output" id="jobOutput"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="modalOverlay" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+const PANELS = ['wiki','graph','ask','upload','people','maintain'];
+const GROUP_COLORS = {
+  people: '#4a7cff',
+  meetings: '#34d399',
+  projects: '#ef4444',
+  systems: '#f87171',
+  process: '#fb923c',
+  ccc: '#a78bfa',
+  slack: '#38bdf8',
+  queries: '#14b8a6',
+  other: '#7a7f93'
+};
+let currentCategory = 'docs';
+let mergeSource = null;
+let currentTreePage = null;
+
+// ==================
+// Navigation
+// ==================
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(`panel-${name}`).classList.add('active');
+  document.querySelectorAll('.nav-item')[PANELS.indexOf(name)].classList.add('active');
+  if (name === 'wiki') { loadNav(); loadSummary(); }
+  if (name === 'graph') loadGraph();
+  if (name === 'upload') loadRawFiles();
+  if (name === 'people') loadPeople();
+  loadStats();
+}
+
+// ==================
+// Wiki Nav
+// ==================
+async function loadNav() {
+  try {
+    const res = await fetch('/api/wiki/nav');
+    const data = await res.json();
+    const nav = document.getElementById('wikiNav');
+    if (!data.content) {
+      nav.innerHTML = '<div style="color: var(--text-faint); padding: 20px; font-size: 13px;">No navigation yet. Run Compile.</div>';
+      return;
+    }
+    // Parse _nav.md: ## headings become sections, ### become sub-groups, - [[path|title]] become links
+    const lines = data.content.split('\n');
+    let html = '';
+    let sectionId = 0;
+    let inSection = false;
+    let inSubSection = false;
+    let itemPadding = '32px';
+    for (const line of lines) {
+      const h2Match = line.match(/^## (.+)/);
+      const h3Match = line.match(/^### (.+)/);
+      const linkMatch = line.match(/- \[\[([^\]|]+)\|([^\]]+)\]\]/);
+      const linkMatchSimple = line.match(/- \[\[([^\]]+)\]\]/);
+      if (h2Match) {
+        if (inSubSection) { html += '</div></div>'; inSubSection = false; }
+        if (inSection) { html += '</div></div>'; inSection = false; }
+        sectionId++;
+        const title = h2Match[1].trim();
+        html += '<div style="margin-bottom: 4px;">';
+        html += '<div onclick="var c=this.nextElementSibling;var a=this.querySelector(\'.arr\');if(c.style.display===\'none\'){c.style.display=\'block\';a.textContent=\'▼\';}else{c.style.display=\'none\';a.textContent=\'▶\';}" style="display:flex;align-items:center;gap:8px;padding:10px 20px;font-size:14px;font-weight:500;color:var(--text);cursor:pointer;">';
+        html += '<span class="arr" style="font-size:10px;color:var(--text-faint);transition:transform 0.15s;display:inline-block;">▶</span>';
+        html += escHtml(title) + '</div>';
+        html += '<div class="tree-children" style="display:none;">';
+        inSection = true;
+        itemPadding = '32px';
+      } else if (h3Match) {
+        if (inSubSection) { html += '</div></div>'; inSubSection = false; }
+        sectionId++;
+        const title = h3Match[1].trim();
+        html += '<div style="margin-bottom: 2px;">';
+        html += '<div onclick="var c=this.nextElementSibling;var a=this.querySelector(\'.arr\');if(c.style.display===\'none\'){c.style.display=\'block\';a.textContent=\'▼\';}else{c.style.display=\'none\';a.textContent=\'▶\';}" style="display:flex;align-items:center;gap:6px;padding:8px 20px 4px 32px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;color:var(--text-faint);cursor:pointer;margin-top:8px;">';
+        html += '<span class="arr" style="font-size:10px;color:var(--text-faint);transition:transform 0.15s;display:inline-block;">▶</span>';
+        html += escHtml(title) + '</div>';
+        html += '<div class="tree-children" style="display:none;">';
+        inSubSection = true;
+        itemPadding = '48px';
+      } else if (linkMatch) {
+        const path = linkMatch[1];
+        const display = linkMatch[2];
+        html += '<div class="tree-page" data-path="' + path + '.md" onclick="openTreePage(\'' + path + '.md\')" style="display:block;padding:5px 20px 5px ' + itemPadding + ';font-size:13px;color:var(--text);cursor:pointer;">' + escHtml(display) + '</div>';
+      } else if (linkMatchSimple) {
+        const path = linkMatchSimple[1];
+        const display = path.split('/').pop();
+        html += '<div class="tree-page" data-path="' + path + '.md" onclick="openTreePage(\'' + path + '.md\')" style="display:block;padding:5px 20px 5px ' + itemPadding + ';font-size:13px;color:var(--text);cursor:pointer;">' + escHtml(display) + '</div>';
+      }
+    }
+    if (inSubSection) { html += '</div></div>'; }
+    if (inSection) { html += '</div></div>'; }
+    nav.innerHTML = html;
+    // Auto-expand first section
+    const firstChildren = nav.querySelector('.tree-children');
+    const firstArrow = nav.querySelector('.arr');
+    if (firstChildren) { firstChildren.style.display = 'block'; }
+    if (firstArrow) firstArrow.textContent = '▼';
+  } catch(e) { console.error(e); }
+}
+
+// ==================
+// Wiki Summary
+// ==================
+function applyBadges(html) {
+  return html
+    .replace(/ — done —/gi, ' <span style="background:#34d399;color:#0f1117;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">DONE</span>')
+    .replace(/ — in-progress —/gi, ' <span style="background:#fbbf24;color:#0f1117;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">IN PROGRESS</span>')
+    .replace(/ — pending —/gi, ' <span style="background:#7a7f93;color:#0f1117;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">PENDING</span>')
+    .replace(/ — blocked —/gi, ' <span style="background:#f87171;color:#0f1117;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">BLOCKED</span>');
+}
+
+async function loadSummary() {
+  try {
+    const res = await fetch('/api/wiki/summary');
+    const data = await res.json();
+    const el = document.getElementById('summaryContent');
+    const tabsEl = document.getElementById('summaryTabs');
+    el.innerHTML = '';
+    tabsEl.innerHTML = '';
+    if (data.content) {
+      const clean = data.content.replace(/<!--.*?-->/g, '').trim();
+      const lines = clean.split('\n');
+      const sections = [];
+      let current = null;
+      for (const line of lines) {
+        if (line.startsWith('## ')) {
+          if (current) sections.push(current);
+          current = { title: line.replace(/^## /, '').trim(), lines: [] };
+        } else if (current) {
+          current.lines.push(line);
+        }
+      }
+      if (current) sections.push(current);
+      if (sections.length === 0) sections.push({ title: 'Project Summary', lines: lines });
+      const contentDivs = [];
+      sections.forEach((section, i) => {
+        const tab = document.createElement('span');
+        tab.textContent = section.title;
+        tab.style.cssText = 'font-size:15px;font-weight:600;padding-bottom:8px;cursor:pointer;border-bottom:2px solid ' + (i === 0 ? 'var(--accent);color:var(--text);' : 'transparent;color:var(--text-dim);');
+        tab.onclick = () => switchSummaryTab(i);
+        tabsEl.appendChild(tab);
+        const div = document.createElement('div');
+        div.innerHTML = applyBadges(renderMd(section.lines.join('\n').trim()));
+        div.style.display = i === 0 ? 'block' : 'none';
+        el.appendChild(div);
+        contentDivs.push(div);
+      });
+      window._summaryDivs = contentDivs;
+    } else {
+      const tab = document.createElement('span');
+      tab.textContent = 'Project Summary';
+      tab.style.cssText = 'font-size:15px;font-weight:600;padding-bottom:8px;color:var(--text);border-bottom:2px solid var(--accent);';
+      tabsEl.appendChild(tab);
+      el.innerHTML = '<span style="color: var(--text-faint);">No summary yet. Run Compile or Ingest.</span>';
+    }
+  } catch(e) { console.error(e); }
+}
+
+function switchSummaryTab(idx) {
+  const tabs = document.getElementById('summaryTabs').children;
+  const divs = window._summaryDivs || [];
+  for (let i = 0; i < tabs.length; i++) {
+    tabs[i].style.color = i === idx ? 'var(--text)' : 'var(--text-dim)';
+    tabs[i].style.borderBottom = i === idx ? '2px solid var(--accent)' : '2px solid transparent';
+    if (divs[i]) divs[i].style.display = i === idx ? 'block' : 'none';
+  }
+}
+
+function toggleSummary() {
+  const content = document.getElementById('summaryContent');
+  const toggle = document.getElementById('summaryToggle');
+  if (content.style.display === 'none') {
+    content.style.display = 'block';
+    toggle.textContent = '▼';
+  } else {
+    content.style.display = 'none';
+    toggle.textContent = '▶';
+  }
+}
+
+// ==================
+// Homepage Status
+// ==================
+async function loadStatus() {
+  try {
+    const res = await fetch('/api/status');
+    const data = await res.json();
+    const el = document.getElementById('statusContent');
+    const up = document.getElementById('statusUpdated');
+
+    if (data.last_updated) up.textContent = `Updated ${data.last_updated}`;
+
+    if (!data.content || data.content.includes('No status generated')) {
+      el.innerHTML = '<div class="no-status">No status generated yet. Run Compile or Ingest to generate.</div>';
+      return;
+    }
+
+    // Parse the status markdown into cards per project
+    let content = data.content.replace(/<!--.*?-->/g, '').trim();
+    // Split by ## headings (projects)
+    const sections = content.split(/^## /m).filter(s => s.trim());
+    let html = '';
+
+    for (const section of sections) {
+      const lines = section.split('\n');
+      const projectTitle = lines[0].trim();
+      const body = lines.slice(1).join('\n');
+
+      // Split into milestones/decisions and TODOs
+      const todoMatch = body.match(/### Open TODOs([\s\S]*?)(?=###|$)/i);
+      const mainContent = todoMatch ? body.replace(todoMatch[0], '') : body;
+      const todoContent = todoMatch ? todoMatch[1].trim() : '';
+
+      html += `<div class="status-card">
+        <h2>${escHtml(projectTitle)}</h2>
+        <div>${renderMd(mainContent)}</div>`;
+
+      if (todoContent) {
+        const todoId = 'todo-' + Math.random().toString(36).substr(2, 6);
+        html += `<div class="todo-toggle" onclick="document.getElementById('${todoId}').classList.toggle('open'); this.textContent = this.textContent.includes('Show') ? 'Hide open TODOs ▲' : 'Show open TODOs ▼';">Show open TODOs ▼</div>
+        <div class="todo-content" id="${todoId}">${renderMd(todoContent)}</div>`;
+      }
+
+      html += '</div>';
+    }
+
+    el.innerHTML = html || '<div class="no-status">Status generated but empty.</div>';
+  } catch (err) { console.error(err); }
+}
+
+// ==================
+// Wiki Tree
+// ==================
+async function loadTree() {
+  try {
+    const res = await fetch('/api/wiki/tree');
+    const data = await res.json();
+    const tree = document.getElementById('wikiTree');
+
+    if (!data.projects || Object.keys(data.projects).length === 0) {
+      tree.innerHTML = '<div class="empty-state">No wiki pages yet.</div>';
+      return;
+    }
+
+    let html = '';
+    for (const [slug, proj] of Object.entries(data.projects)) {
+      const projId = 'proj-' + slug;
+      html += `<div class="tree-section">
+        <div class="tree-project" onclick="toggleTree('${projId}')">
+          <span class="arrow" id="arrow-${projId}">▶</span>
+          ${escHtml(proj.title)}
+        </div>
+        <div class="tree-children" id="${projId}">`;
+
+      // Project overview link
+      if (proj.path) {
+        html += `<div class="tree-proj-link" onclick="openTreePage('${proj.path}')">Overview</div>`;
+      }
+
+      // Decisions
+      if (proj.decisions.length) {
+        html += `<div class="tree-category">Decisions (${proj.decisions.length})</div>`;
+        for (const p of proj.decisions) {
+          html += `<div class="tree-page" data-path="${p.path}" onclick="openTreePage('${p.path}')">${escHtml(p.title)}</div>`;
+        }
+      }
+
+      // Concepts
+      if (proj.concepts.length) {
+        html += `<div class="tree-category">Concepts (${proj.concepts.length})</div>`;
+        for (const p of proj.concepts) {
+          html += `<div class="tree-page" data-path="${p.path}" onclick="openTreePage('${p.path}')">${escHtml(p.title)}</div>`;
+        }
+      }
+
+      // Onboarding
+      if (proj.onboarding.length) {
+        html += `<div class="tree-category">Onboarding (${proj.onboarding.length})</div>`;
+        for (const p of proj.onboarding) {
+          html += `<div class="tree-page" data-path="${p.path}" onclick="openTreePage('${p.path}')">${escHtml(p.title)}</div>`;
+        }
+      }
+
+      html += '</div></div>';
+    }
+
+    tree.innerHTML = html;
+
+    // Auto-expand first project
+    const firstSlug = Object.keys(data.projects)[0];
+    if (firstSlug) toggleTree('proj-' + firstSlug);
+  } catch (err) { console.error(err); }
+}
+
+function toggleTree(id) {
+  const el = document.getElementById(id);
+  const arrow = document.getElementById('arrow-' + id);
+  if (el) {
+    el.classList.toggle('open');
+    if (arrow) arrow.classList.toggle('open');
+  }
+}
+
+async function openTreePage(path) {
+  try {
+    const res = await fetch(`/api/wiki/${path}`);
+    const data = await res.json();
+    if (data.error) { document.getElementById('wikiReader').innerHTML = `<div class="reader-placeholder">${data.error}</div>`; return; }
+
+    let pageTitle = path.replace('.md','').split('/').pop().replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+    const lines = data.content.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('title:')) { pageTitle = line.split('title:')[1].trim(); break; }
+      if (line.startsWith('# ')) { pageTitle = line.substring(2).trim(); break; }
+    }
+
+    document.getElementById('wikiReader').innerHTML = '<h1 style="font-size:20px;font-weight:600;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border);">' + escHtml(pageTitle) + '</h1><div class="reader-content">' + renderWikiContent(data.content) + '</div>';
+
+    // Highlight in tree
+    document.querySelectorAll('.tree-page').forEach(p => p.style.color = '');
+    const active = document.querySelector(`.tree-page[data-path="${path}"]`);
+    if (active) {
+      active.style.color = 'var(--accent)';
+      const parentChildren = active.closest('.tree-children');
+      if (parentChildren) {
+        parentChildren.style.display = 'block';
+        const section = parentChildren.previousElementSibling;
+        if (section) {
+          const arrow = section.querySelector('.tree-arrow');
+          if (arrow) arrow.textContent = '▼';
+        }
+      }
+    }
+    currentTreePage = path;
+  } catch (err) { console.error(err); }
+}
+
+function navigateWikiLink(path) {
+  if (!path.endsWith('.md')) path += '.md';
+  // If we're in wiki panel, use tree navigation
+  if (document.getElementById('panel-wiki').classList.contains('active')) {
+    openTreePage(path);
+  } else {
+    showPanel('wiki');
+    setTimeout(() => openTreePage(path), 200);
+  }
+}
+
+// ==================
+// Render helpers
+// ==================
+function renderWikiContent(text) {
+  if (text.startsWith('---')) {
+    const endIdx = text.indexOf('---', 3);
+    if (endIdx !== -1) text = text.substring(endIdx + 3).trim();
+  }
+  text = text.replace(/^```markdown\s*/,'').replace(/^```\s*/,'').replace(/```\s*$/,'');
+  text = text.replace(/^# .+\n?/, '');
+  return renderMd(text);
+}
+
+function renderMd(text) {
+  // Extract links before escaping
+  const links = [];
+  text = text.replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, (_, path, display) => { links.push({path, display}); return `%%L${links.length-1}%%`; });
+  text = text.replace(/\[\[([^\]]+)\]\]/g, (_, path) => { links.push({path, display: path.split('/').pop()}); return `%%L${links.length-1}%%`; });
+  text = text.replace(/__([a-z0-9-]+\.md)__/g, (_, fn) => { const n = fn.replace('.md',''); links.push({path: n, display: n.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}); return `%%L${links.length-1}%%`; });
+
+  let html = escHtml(text);
+
+  // Markdown
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+  // Lists — process line by line so consecutive items group into one <ul>/<ol>
+  {
+    const lines = html.split('\n');
+    const out = [];
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^[\*\-] /.test(line)) {
+        const items = [];
+        while (i < lines.length && /^[\*\-] /.test(lines[i])) {
+          items.push('<li>' + lines[i].replace(/^[\*\-] /, '').trim() + '</li>');
+          i++;
+        }
+        out.push('<ul>' + items.join('') + '</ul>');
+      } else if (/^\d+[\.\)] /.test(line)) {
+        const items = [];
+        while (i < lines.length && /^\d+[\.\)] /.test(lines[i])) {
+          items.push('<li>' + lines[i].replace(/^\d+[\.\)] /, '').trim() + '</li>');
+          i++;
+        }
+        out.push('<ol>' + items.join('') + '</ol>');
+      } else {
+        out.push(line);
+        i++;
+      }
+    }
+    html = out.join('\n');
+  }
+
+  // Paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p>(\s*<[huo])/g, '$1');
+  html = html.replace(/(<\/[huo]l>)\s*<\/p>/g, '$1');
+
+  // Restore links
+  for (let i = 0; i < links.length; i++) {
+    const {path, display} = links[i];
+    html = html.replace(`%%L${i}%%`, `<span class="wiki-link" onclick="navigateWikiLink('${path}')">${escHtml(display)}</span>`);
+  }
+
+  return html;
+}
+
+// ==================
+// Ask
+// ==================
+async function askQuestion() {
+  document.getElementById('saveAnswerBar').style.display = 'none';
+  const input = document.getElementById('askInput');
+  const box = document.getElementById('answerBox');
+  const btn = document.getElementById('askBtn');
+  const q = input.value.trim(); if (!q) return;
+  box.className = 'answer-box loading'; box.textContent = 'Thinking...'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/ask', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question:q}) });
+    const data = await res.json();
+    box.className = 'answer-box';
+    box.innerHTML = renderMd(data.answer);
+    document.getElementById('saveAnswerBar').style.display = 'block';
+    window._lastQuestion = q;
+    window._lastAnswer = data.answer;
+  } catch(e) { box.className='answer-box'; box.textContent='Error: '+e.message; }
+  finally { btn.disabled = false; }
+}
+
+async function saveAnswer() {
+  const btn = document.querySelector('#saveAnswerBar button');
+  const status = document.getElementById('saveStatus');
+  btn.disabled = true;
+  status.textContent = 'Saving...';
+  try {
+    const res = await fetch('/api/wiki/save_answer', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question: window._lastQuestion, answer: window._lastAnswer})
+    });
+    const data = await res.json();
+    if (data.status === 'ok') {
+      status.textContent = '✓ Saved as ' + data.path;
+      toast('Answer saved to wiki', 'success');
+    } else {
+      status.textContent = 'Failed: ' + (data.error || '');
+    }
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+// ==================
+// Upload
+// ==================
+function setCategory(el, cat) { currentCategory = cat; document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active')); el.classList.add('active'); }
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+async function handleFiles(files) {
+  if (!files.length) return;
+  const fd = new FormData(); fd.append('category', currentCategory);
+  for (const f of files) fd.append('files', f);
+  try {
+    const res = await fetch('/api/upload', {method:'POST', body:fd});
+    const data = await res.json();
+    const list = document.getElementById('uploadResults');
+    for (const p of data.uploaded) { const d = document.createElement('div'); d.className='upload-item'; d.textContent='✓ '+p; list.prepend(d); }
+    toast(`${data.uploaded.length} file(s) uploaded`,'success');
+    loadRawFiles(); loadStats();
+  } catch(e) { toast('Upload failed: '+e.message,'error'); }
+}
+
+async function loadRawFiles() {
+  try {
+    const res = await fetch('/api/raw'); const data = await res.json();
+    const list = document.getElementById('rawFileList');
+    if (!data.files.length) { list.innerHTML='<div class="empty-state">No files yet.</div>'; return; }
+    list.innerHTML = data.files.map(f => `<div class="file-item"><span class="path">${f.path}</span><span class="meta">${formatBytes(f.size)}</span></div>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+// ==================
+// People
+// ==================
+async function loadPeople() {
+  try {
+    const res = await fetch('/api/people'); const data = await res.json();
+    const list = document.getElementById('peopleList');
+    if (!data.people.length) { list.innerHTML='<div class="empty-state">No people pages yet.</div>'; return; }
+    list.innerHTML = data.people.map(p => `
+      <div class="person-row ${mergeSource===p.filename?'selected':''}" id="person-${p.filename}">
+        <div class="person-info" onclick="navigateWikiLink('people/${p.filename}')">
+          <div class="person-name">${escHtml(p.title)}</div>
+        </div>
+        <div class="person-actions">
+          <button class="btn btn-sm btn-outline" onclick="startRename('${p.filename}','${escAttr(p.title)}')">Rename</button>
+          <button class="btn btn-sm btn-merge" onclick="handleMergeClick('${p.filename}','${escAttr(p.title)}')">Merge</button>
+          <button class="btn btn-sm btn-danger" onclick="confirmDelete('${p.filename}','${escAttr(p.title)}')">Delete</button>
+        </div>
+      </div>`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function handleMergeClick(fn, title) {
+  if (!mergeSource) { mergeSource=fn; document.getElementById('mergeBar').style.display='flex'; document.getElementById('mergeText').textContent=`Merging "${title}" → click another person`; loadPeople(); }
+  else if (mergeSource===fn) { cancelMerge(); }
+  else { showMergeModal(mergeSource, fn, title); }
+}
+function cancelMerge() { mergeSource=null; document.getElementById('mergeBar').style.display='none'; loadPeople(); }
+function showMergeModal(rem, keep, keepTitle) {
+  document.getElementById('modalContent').innerHTML=`<h3>Confirm Merge</h3><p>Merge <strong>${rem}</strong> into <strong>${keepTitle}</strong>?</p><div class="modal-actions"><button class="btn btn-sm btn-outline" onclick="closeModal();cancelMerge()">Cancel</button><button class="btn btn-sm btn-merge" onclick="executeMerge('${keep}','${rem}')">Merge</button></div>`;
+  document.getElementById('modalOverlay').style.display='flex';
+}
+async function executeMerge(keep, rem) {
+  closeModal();
+  try { const r=await fetch('/api/people/merge',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keep,remove:rem})}); const d=await r.json(); if(d.status==='ok') toast(d.message,'success'); else toast('Failed: '+(d.error||''),'error'); } catch(e){toast('Failed: '+e.message,'error');}
+  mergeSource=null; document.getElementById('mergeBar').style.display='none'; loadPeople();
+}
+function confirmDelete(fn, title) {
+  document.getElementById('modalContent').innerHTML=`<h3>Delete Person</h3><p>Delete <strong>${title}</strong>?</p><div class="modal-actions"><button class="btn btn-sm btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-sm btn-danger" onclick="executeDelete('${fn}')">Delete</button></div>`;
+  document.getElementById('modalOverlay').style.display='flex';
+}
+async function executeDelete(fn) { closeModal(); try { const r=await fetch('/api/people/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({filename:fn})}); const d=await r.json(); if(d.status==='ok') toast(d.message,'success'); else toast('Failed','error'); } catch(e){toast('Failed','error');} loadPeople(); }
+function startRename(fn, title) {
+  document.getElementById('modalContent').innerHTML=`<h3>Rename Person</h3><p>Enter the correct name.</p><input type="text" id="renameInput" value="${title}"><div class="modal-actions"><button class="btn btn-sm btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-sm btn-primary" onclick="executeRename('${fn}')">Rename</button></div>`;
+  document.getElementById('modalOverlay').style.display='flex';
+  setTimeout(()=>document.getElementById('renameInput').focus(),100);
+}
+async function executeRename(old) { const n=document.getElementById('renameInput').value.trim(); if(!n) return; closeModal(); try { const r=await fetch('/api/people/rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({old_filename:old,new_name:n})}); const d=await r.json(); if(d.status==='ok') toast(d.message,'success'); else toast('Failed','error'); } catch(e){toast('Failed','error');} loadPeople(); }
+function closeModal() { document.getElementById('modalOverlay').style.display='none'; }
+
+// ==================
+// Maintain
+// ==================
+async function runJob(type) {
+  const output=document.getElementById('jobOutput'); output.textContent=`Starting ${type}...`;
+  document.querySelectorAll('.action-card .btn').forEach(b=>b.disabled=true);
+  try { const r=await fetch(`/api/run/${type}`,{method:'POST'}); const d=await r.json(); if(d.error){output.textContent='Error: '+d.error; document.querySelectorAll('.action-card .btn').forEach(b=>b.disabled=false); return;} output.innerHTML=`<span class="spinner"></span> Running ${type}...`; pollJob(d.job_id); }
+  catch(e){output.textContent='Error: '+e.message; document.querySelectorAll('.action-card .btn').forEach(b=>b.disabled=false);}
+}
+async function pollJob(id) {
+  const output=document.getElementById('jobOutput');
+  try { const r=await fetch(`/api/job/${id}`); const d=await r.json();
+    if(d.status==='running'||d.status==='queued') { if(d.result&&d.result.progress) output.innerHTML=`<span class="spinner"></span> ${d.result.progress}`; setTimeout(()=>pollJob(id),3000); return; }
+    document.querySelectorAll('.action-card .btn').forEach(b=>b.disabled=false);
+    if(d.status==='done') { const r=d.result; if(r.report){output.textContent=r.report;} else { output.textContent=`✓ Done! ${(r.files_written||[]).length} files written.\n\nFiles:\n${(r.files_written||[]).join('\n')}\n\nChangelog:\n${r.changelog||''}`; } toast(`${d.type} completed`,'success'); loadStats(); }
+    else { output.textContent='Error: '+JSON.stringify(d.result); toast(`${d.type} failed`,'error'); }
+  } catch(e){output.textContent='Error: '+e.message; document.querySelectorAll('.action-card .btn').forEach(b=>b.disabled=false);}
+}
+
+// ==================
+// Stats & Utilities
+// ==================
+async function loadStats() { try { const r=await fetch('/api/stats'); const d=await r.json(); document.getElementById('statRaw').textContent=d.raw_files; document.getElementById('statPages').textContent=d.wiki_pages; document.getElementById('statWords').textContent=d.wiki_words.toLocaleString(); } catch(e){} }
+function formatBytes(b) { if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; return (b/1048576).toFixed(1)+' MB'; }
+function escHtml(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escAttr(s) { return s.replace(/'/g,"\\'").replace(/"/g,'&quot;'); }
+function toast(msg,type) { const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),300);},3000); }
+
+let graphData = null;
+let graphSimulation = null;
+
+async function loadGraph() {
+  if (!graphData) {
+    try {
+      const res = await fetch('/api/wiki/graph');
+      graphData = await res.json();
+    } catch(e) { console.error(e); return; }
+  }
+  // Deep copy to prevent d3 mutation issues
+  const data = {
+    nodes: graphData.nodes.map(n => ({...n})),
+    edges: graphData.edges.map(e => ({...e}))
+  };
+  renderGraph(data);
+}
+
+function renderGraph(data) {
+  const svg = d3.select('#graphSvg');
+  svg.selectAll('*').remove();
+
+  const width = document.getElementById('panel-graph').clientWidth;
+  const height = document.getElementById('panel-graph').clientHeight;
+
+  svg.attr('viewBox', [0, 0, width, height]);
+
+  const g = svg.append('g');
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.2, 5]).on('zoom', (event) => {
+    g.attr('transform', event.transform);
+  }));
+
+  // Calculate node sizes based on connection count
+  const linkCount = {};
+  data.edges.forEach(e => {
+    linkCount[e.source] = (linkCount[e.source] || 0) + 1;
+    linkCount[e.target] = (linkCount[e.target] || 0) + 1;
+  });
+
+  function peopleSpreadForce() {
+    let nodes;
+    function force(alpha) {
+      const people = nodes.filter(n => n.group === 'people');
+      if (people.length < 2) return;
+      const cx = width / 2;
+      const cy = height / 2;
+      // Push people apart from each other along the circumference
+      for (let i = 0; i < people.length; i++) {
+        for (let j = i + 1; j < people.length; j++) {
+          const a = people[i];
+          const b = people[j];
+          const dx = a.x - b.x;
+          const dy = a.y - b.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          if (dist < 200) {
+            const strength = alpha * 1.2 * (200 - dist) / dist;
+            a.vx += dx * strength;
+            a.vy += dy * strength;
+            b.vx -= dx * strength;
+            b.vy -= dy * strength;
+          }
+        }
+      }
+    }
+    force.initialize = function(n) { nodes = n; };
+    return force;
+  }
+
+  const simulation = d3.forceSimulation(data.nodes)
+    .force('link', d3.forceLink(data.edges).id(d => d.id).distance(100))
+    .force('charge', d3.forceManyBody().strength(-300))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(30))
+    .force('radial', d3.forceRadial(d => {
+      if (d.group === 'people') return Math.min(width, height) * 0.35;
+      return 0;
+    }, width / 2, height / 2).strength(d => d.group === 'people' ? 0.6 : 0))
+    .force('peoplespread', peopleSpreadForce());
+
+  graphSimulation = simulation;
+
+  // Draw edges
+  const link = g.append('g')
+    .selectAll('line')
+    .data(data.edges)
+    .join('line')
+    .attr('stroke', '#2a2d3a')
+    .attr('stroke-width', 1)
+    .attr('stroke-opacity', 0.6);
+
+  // Draw nodes
+  const node = g.append('g')
+    .selectAll('circle')
+    .data(data.nodes)
+    .join('circle')
+    .attr('r', d => Math.max(5, Math.min(14, (linkCount[d.id] || 0) * 1.2 + 4)))
+    .attr('fill', d => GROUP_COLORS[d.group] || GROUP_COLORS.other)
+    .attr('stroke', '#0f1117')
+    .attr('stroke-width', 1.5)
+    .style('cursor', 'pointer')
+    .call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; })
+    );
+
+  // Draw labels
+  const label = g.append('g')
+    .selectAll('text')
+    .data(data.nodes)
+    .join('text')
+    .text(d => d.title)
+    .attr('font-size', 11)
+    .attr('fill', '#e1e3eb')
+    .attr('dx', d => Math.max(6, Math.min(20, (linkCount[d.id] || 0) * 2 + 4)) + 4)
+    .attr('dy', 4)
+    .style('pointer-events', 'none');
+
+  // Hover: highlight connected nodes
+  node.on('mouseover', function(event, d) {
+    const connected = new Set();
+    connected.add(d.id);
+    data.edges.forEach(e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      if (sid === d.id) connected.add(tid);
+      if (tid === d.id) connected.add(sid);
+    });
+    node.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+    link.attr('stroke-opacity', e => {
+      const sid = typeof e.source === 'object' ? e.source.id : e.source;
+      const tid = typeof e.target === 'object' ? e.target.id : e.target;
+      return (sid === d.id || tid === d.id) ? 0.8 : 0.05;
+    });
+    label.attr('opacity', n => connected.has(n.id) ? 1 : 0.1);
+  });
+
+  node.on('mouseout', function() {
+    node.attr('opacity', 1);
+    link.attr('stroke-opacity', 0.6);
+    label.attr('opacity', 1);
+  });
+
+  // Click: open wiki page
+  node.on('click', function(event, d) { showPanel('wiki'); setTimeout(() => openTreePage(d.id + '.md'), 200); });
+
+  const legendGroups = [...new Set(data.nodes.map(n => n.group))].sort();
+  const legend = svg.append('g')
+    .attr('transform', 'translate(20,' + (height - legendGroups.length * 22 - 30) + ')')
+    .attr('style', 'pointer-events: none;');
+
+  legend.append('rect')
+    .attr('x', -10).attr('y', -10)
+    .attr('width', 160)
+    .attr('height', legendGroups.length * 22 + 12)
+    .attr('fill', 'var(--bg-card)')
+    .attr('stroke', 'var(--border)')
+    .attr('rx', 6)
+    .attr('opacity', 0.9);
+
+  legendGroups.forEach((group, i) => {
+    legend.append('circle')
+      .attr('cx', 8).attr('cy', i * 22 + 8)
+      .attr('r', 5)
+      .attr('fill', GROUP_COLORS[group] || GROUP_COLORS.other);
+    legend.append('text')
+      .attr('x', 20).attr('y', i * 22 + 12)
+      .text(group.charAt(0).toUpperCase() + group.slice(1))
+      .attr('font-size', 12)
+      .attr('fill', '#e1e3eb');
+  });
+
+  // Tick
+  simulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('cx', d => d.x).attr('cy', d => d.y);
+    label.attr('x', d => d.x).attr('y', d => d.y);
+  });
+}
+
+function filterGraph(query) {
+  if (!graphData) return;
+  const svg = d3.select('#graphSvg');
+  query = query.toLowerCase().trim();
+
+  if (!query) {
+    // Reset all
+    svg.selectAll('circle').attr('opacity', 1);
+    svg.selectAll('line').attr('stroke-opacity', 0.6);
+    svg.selectAll('text').attr('opacity', 1);
+    return;
+  }
+
+  // Find matching nodes
+  const matched = new Set();
+  graphData.nodes.forEach(n => {
+    if (n.title.toLowerCase().includes(query) || n.id.toLowerCase().includes(query)) {
+      matched.add(n.id);
+    }
+  });
+
+  // Also include directly connected nodes
+  const connected = new Set(matched);
+  graphData.edges.forEach(e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    if (matched.has(sid)) connected.add(tid);
+    if (matched.has(tid)) connected.add(sid);
+  });
+
+  svg.selectAll('circle').attr('opacity', d => connected.has(d.id) ? 1 : 0.05);
+  svg.selectAll('text').attr('opacity', d => connected.has(d.id) ? 1 : 0.05);
+  svg.selectAll('line').attr('stroke-opacity', e => {
+    const sid = typeof e.source === 'object' ? e.source.id : e.source;
+    const tid = typeof e.target === 'object' ? e.target.id : e.target;
+    return (connected.has(sid) && connected.has(tid)) ? 0.8 : 0.02;
+  });
+}
+
+// Init
+loadNav(); loadSummary();
+loadStats();
+</script>
+</body>
+</html>

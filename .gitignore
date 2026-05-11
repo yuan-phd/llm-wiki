@@ -1,0 +1,14 @@
+raw/*
+!raw/.gitkeep
+wiki/*.md
+wiki/**/*.md
+!wiki/_schema.md
+!wiki/_aliases.json
+!wiki/.gitkeep
+.env
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+.obsidian/
+.claude/
