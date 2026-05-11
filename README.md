@@ -1,8 +1,17 @@
-# Team Wiki
+# LLM Wiki
 
-An LLM-powered knowledge base that compiles your team's scattered documents into a structured, searchable wiki. Based on [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern.
+An LLM-powered knowledge base that compiles scattered documents into a structured, searchable wiki. Based on [Karpathy's LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) pattern.
 
 Everyone interacts through a web UI — no command line needed for daily use.
+
+## Features
+- **Browse Wiki** — structured navigation with project summary dashboard and status badges
+- **Ask** — question answering with L1/L2 cache (80%+ token savings)
+- **Graph** — interactive force-directed graph showing page connections
+- **Upload** — drag-and-drop file upload with auto-conversion (docx, pdf)
+- **People** — manage team members with merge, rename, delete
+- **Save answers** — save valuable Ask results back into the wiki
+- **Obsidian compatible** — open wiki/ as an Obsidian vault for graph view and backlinks
 
 ---
 
@@ -11,8 +20,8 @@ Everyone interacts through a web UI — no command line needed for daily use.
 ### 1. Clone and install
 
 ```bash
-git clone <your-repo-url> team-wiki
-cd team-wiki
+git clone <your-repo-url> llm-wiki
+cd llm-wiki
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
@@ -65,8 +74,8 @@ Once a week, someone clicks **Lint** in the Maintain tab to check for inconsiste
 
 ```bash
 # On your work machine
-git clone <your-repo-url> team-wiki
-cd team-wiki
+git clone <your-repo-url> llm-wiki
+cd llm-wiki
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -87,32 +96,33 @@ To make it accessible to the team on your local network:
 ## Project Structure
 
 ```
-team-wiki/
+llm-wiki/
 ├── server.py              ← Web server (run this)
 ├── web/index.html         ← Web UI
+├── trim_jira.py           ← Jira CSV column trimmer
 ├── requirements.txt
 ├── .env                   ← API key (never commit)
 ├── .env.example
 ├── .gitignore
+├── CLAUDE.md              ← Project context for Claude Code
 ├── _prompts/              ← Prompt templates for LLM operations
 │   ├── compile_full.md
 │   ├── ingest.md
 │   └── lint.md
-├── raw/                   ← Source files (team uploads here)
-│   ├── docs/
-│   ├── slack/
-│   ├── meetings/
-│   └── code/
+├── docs/                  ← Setup guides and documentation
+│   ├── deployment.md
+│   └── obsidian-setup.md
+├── raw/                   ← Source files (upload here)
 └── wiki/                  ← Generated wiki (LLM maintains this)
-    ├── _schema.md
-    ├── _index.md
-    ├── onboarding/
-    ├── projects/
-    ├── decisions/
-    ├── people/
-    ├── faq/
-    └── concepts/
+    ├── _schema.md         ← Rules for the LLM
+    ├── _aliases.json      ← Name deduplication
+    ├── _nav.md            ← LLM-generated navigation
+    ├── _summary.md        ← Auto-generated status dashboard
+    ├── _index.md          ← Page catalog
+    └── _log.md            ← Operation log
 ```
+
+The LLM decides the wiki page structure based on your content — there are no hardcoded categories.
 
 ---
 
@@ -121,7 +131,7 @@ team-wiki/
 For a richer browsing experience with graph view and backlinks:
 
 1. Download [Obsidian](https://obsidian.md)
-2. Open vault → select the `team-wiki/` folder
+2. Open vault → select the `wiki/` folder inside `llm-wiki`
 3. Browse `wiki/` pages with full link navigation
 
 This is completely optional — the web UI works standalone.
